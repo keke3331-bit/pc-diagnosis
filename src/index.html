@@ -6,7 +6,7 @@
 <title>パソコン診断処方箋</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="v-input">
 <header class="topbar">
   <h1>パソコン診断処方箋 <span class="sub">Web版</span></h1>
   <span class="sync-status" id="sync">⚪ 接続中…</span>
@@ -16,6 +16,12 @@
   <button class="primary" id="btnSave">💾 保存</button>
   <button id="btnPrint">🖨 印刷 / PDF</button>
 </header>
+
+<!-- スマホ用タブ（入力 / 処方箋プレビューの切替）。PCでは非表示 -->
+<nav class="mtabs">
+  <button class="mtab active" data-view="input">📝 入力</button>
+  <button class="mtab" data-view="preview">📄 処方箋プレビュー</button>
+</nav>
 
 <main>
   <section class="form-pane" id="formPane"></section>

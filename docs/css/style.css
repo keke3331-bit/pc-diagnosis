@@ -19,6 +19,9 @@ button{font-family:inherit;cursor:pointer}
 .topbar button.ghost{background:#2a3a57}
 .sync-status{font-size:11px;padding:3px 9px;border-radius:20px;background:#2a3a57;white-space:nowrap}
 
+/* ===== スマホ用タブ（PCでは非表示） ===== */
+.mtabs{display:none}
+
 /* ===== layout ===== */
 main{display:grid;grid-template-columns:minmax(420px,1fr) auto;gap:0;align-items:start}
 .form-pane{padding:14px 16px 120px;max-height:calc(100vh - 50px);overflow-y:auto}
@@ -92,14 +95,45 @@ input.f.wide{width:230px}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#15233b;color:#fff;padding:11px 20px;border-radius:24px;font-size:13px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
 
+/* ===== スマホ（〜900px）：入力 / 処方箋プレビュー をタブで切替（横並びによる崩れ防止） ===== */
+@media (max-width:900px){
+  .topbar{flex-wrap:wrap;gap:6px;padding:8px 10px}
+  .topbar h1{font-size:14px;width:100%}
+  .topbar .sync-status{order:5}
+  .topbar .spacer{display:none}
+  .topbar button{flex:1;padding:8px 6px;font-size:12px;white-space:nowrap}
+
+  .mtabs{display:flex;position:sticky;top:0;z-index:40;background:#1f2d49}
+  .mtab{flex:1;border:0;background:transparent;color:#9fb0cf;font-size:14px;font-weight:700;
+    padding:11px 6px;border-bottom:3px solid transparent;cursor:pointer}
+  .mtab.active{color:#fff;border-bottom-color:#5b9bd5;background:#27395c}
+
+  main{display:block}
+  .form-pane,.preview-pane{display:none}
+  body.v-input  .form-pane{display:block;max-height:none;overflow:visible;padding:10px 10px 120px}
+  body.v-preview .preview-pane{display:flex}
+  .preview-pane{position:static;height:auto;top:0;padding:12px 8px;overflow:auto}
+
+  /* フォーム行：ラベルとコントロールを縦積みにして潰れを防ぐ */
+  .frow{grid-template-columns:1fr;gap:5px;padding:8px 10px}
+  .rowhead{flex-wrap:wrap}
+  .frow .lab{white-space:normal;overflow:visible}
+  select{max-width:none;width:100%;flex:1 1 100%}
+  input.f,input.f.wide{width:100%;flex:1 1 100%}
+  .ddrive-field{display:flex;width:100%}
+  .sec>.sec-h{font-size:14px}
+  .frow .lab{font-size:14px}
+  select,input.f{font-size:16px}  /* iOSの自動ズーム防止(16px) */
+}
+
 /* ===== print ===== */
 @media print{
   @page{size:A4 portrait;margin:0}
   html,body{margin:0 !important;padding:0 !important;width:auto !important;height:auto !important;overflow:hidden !important;background:#fff}
-  .topbar,.form-pane,.modal,.toast{display:none !important}
+  .topbar,.form-pane,.modal,.toast,.mtabs{display:none !important}
   main{display:block !important;width:auto !important;margin:0 !important;padding:0 !important}
   .preview-pane{position:static !important;height:auto !important;overflow:hidden !important;padding:0 !important;margin:0 !important;background:#fff;display:block !important;width:auto !important}
-  .a4-wrap{box-shadow:none !important;margin:0 auto !important;width:707px !important}
+  .a4-wrap{box-shadow:none !important;margin:0 auto !important;width:707px !important;zoom:1 !important;transform:none !important}
   /* 枠ごと印刷可能領域に収まる寸法に固定し、2ページ目を防止 */
   .a4{box-shadow:none !important;margin:0 auto !important;width:707px !important;height:1000px !important;overflow:hidden !important;page-break-inside:avoid;break-inside:avoid;page-break-after:avoid}
 }

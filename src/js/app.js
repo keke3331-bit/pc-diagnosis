@@ -105,8 +105,13 @@ function buildPreview(){
   scalerEl.innerHTML = BP.PRINT_HTML;
   a4El = $('#a4');
   const tbl = scalerEl.querySelector('table.hanei');
-  const natW = tbl ? tbl.offsetWidth : 1078;
-  const natH = tbl ? tbl.offsetHeight : 1758;
+  // 自然サイズは列幅/行高の合計から算出（display:none時でも0にならないように）
+  let natW=1078, natH=1758;
+  if(tbl){
+    let tw=0; tbl.querySelectorAll('colgroup col').forEach(c=>tw+=parseFloat(c.style.width)||0);
+    let th=0; tbl.querySelectorAll('tr').forEach(r=>th+=parseFloat(r.style.height)||0);
+    if(tw>0) natW=tw; if(th>0) natH=th;
+  }
   drawColorUnderlays(tbl);   // 色付き領域の継ぎ目(方眼)を消す同色ベタ下地
   // .a4枠を小さめ(707x1000=約187x264mm)にし、Safariのヘッダ/フッタ余白が入っても1ページに収める
   const BOX_W=707, BOX_H=1000;        // .a4ボックス
@@ -171,13 +176,12 @@ function drawBars(L){
   let xs=[0]; cols.forEach(c=>xs.push(xs[xs.length-1]+(parseFloat(c.style.width)||0)));
   const trs = tbl.querySelectorAll('tr');
   let ys=[0]; trs.forEach(r=>ys.push(ys[ys.length-1]+(parseFloat(r.style.height)||0)));
-  const natW=xs[xs.length-1], natH=ys[ys.length-1];
-  const trect=tbl.getBoundingClientRect(), arect=a4El.getBoundingClientRect();
-  const ox=trect.left-arect.left, oy=trect.top-arect.top;
-  function PX(col){ return ox + (xs[col-1]/natW)*trect.width; }
-  function PW(c1,c2){ return ((xs[c2]-xs[c1-1])/natW)*trect.width; }
-  function PY(row){ return oy + (ys[row-2]/natH)*trect.height; }
-  function PHpx(r1,r2){ return (ys[r2-1]-ys[r1-2])/natH*trect.height; }
+  // 内側スケーラの transform(translate+scale) 基準で算出（外側zoom/拡縮に依存しない）
+  const s=window.__scale||1, ox=window.__offX||0, oy=window.__offY||0;
+  function PX(col){ return ox + xs[col-1]*s; }
+  function PW(c1,c2){ return (xs[c2]-xs[c1-1])*s; }
+  function PY(row){ return oy + ys[row-2]*s; }
+  function PHpx(r1,r2){ return (ys[r2-1]-ys[r1-2])*s; }
   // 使用率バー（薄め）
   function placeBar(col1,col2,row1,row2,used,label){
     const bar=document.createElement('div'); bar.className='usebar';
@@ -553,9 +557,37 @@ function boot(){
   $('#listClose').onclick=closeList;
   $('#listModal').addEventListener('click',e=>{ if(e.target.id==='listModal')closeList(); });
   $('#search').addEventListener('input', renderList);
+  setupMobileTabs();
+  window.addEventListener('resize', fitPreviewMobile);
   // local fallback load
   if(typeof firebase==='undefined'){ try{ allRecords=JSON.parse(localStorage.getItem('pc_rx_local')||'{}'); }catch(e){} }
   window.addEventListener('beforeunload', e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
+}
+
+/* ===== スマホ：入力/プレビュー タブ切替 ===== */
+function isMobile(){ return window.matchMedia('(max-width:900px)').matches; }
+function setupMobileTabs(){
+  $$('.mtab').forEach(t=>{
+    t.onclick=()=>{
+      const v=t.dataset.view;
+      document.body.classList.toggle('v-preview', v==='preview');
+      document.body.classList.toggle('v-input',  v==='input');
+      $$('.mtab').forEach(x=>x.classList.toggle('active', x===t));
+      if(v==='preview') fitPreviewMobile();
+    };
+  });
+}
+// スマホ時はA4プレビューを画面幅に合わせて縮小（zoom）。PCでは等倍。
+function fitPreviewMobile(){
+  const wrap=document.querySelector('.a4-wrap'); if(!wrap) return;
+  if(isMobile()){
+    const pane=document.querySelector('.preview-pane');
+    const avail=(pane?pane.clientWidth:window.innerWidth)-20;
+    const z=Math.min(1, avail/707);
+    wrap.style.zoom=z>0?z:1;
+  } else {
+    wrap.style.zoom='';
+  }
 }
 document.addEventListener('DOMContentLoaded', boot);
 })();
