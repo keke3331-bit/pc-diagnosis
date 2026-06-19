@@ -473,7 +473,7 @@ function initFirebase(){
       if(s.val()===true) markSync(dirty?'●未保存':'🟢 接続済','#7bdca0');
       else markSync('🔴 オフライン','#e88');
     });
-    dbRef.on('value', snap=>{ allRecords = snap.val()||{}; renderList(); });
+    dbRef.on('value', snap=>{ allRecords = snap.val()||{}; renderList(); tryOpenFromUrl(); });
   }catch(e){ console.warn('Firebase init error', e); markSync('⚪ ローカルのみ','#ccc'); }
 }
 function recordTitle(m){
@@ -492,6 +492,14 @@ function save(){
   if(dbRef){ dbRef.child(id).set(rec).then(()=>{ toast('💾 保存しました'); markSync('🟢 保存済','#7bdca0'); })
     .catch(e=>{ toast('保存失敗: '+e.message); }); }
   else { allRecords[id]=rec; localStorage.setItem('pc_rx_local', JSON.stringify(allRecords)); toast('💾 ローカル保存'); }
+}
+// URLの ?id=<記録ID> で特定の処方箋を開く（FCからの紐づけリンク用）
+let _urlIdHandled=false;
+function tryOpenFromUrl(){
+  if(_urlIdHandled) return;
+  const id=new URLSearchParams(location.search).get('id');
+  if(!id) { _urlIdHandled=true; return; }
+  if(allRecords && allRecords[id]){ _urlIdHandled=true; loadRecord(id); toast('紐づけられた点検結果を開きました'); }
 }
 function loadRecord(id){
   const rec = allRecords[id]; if(!rec)return;
