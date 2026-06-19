@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>パソコン診断処方箋</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>パソコン診断処方箋 <span class="sub">Web版</span></h1>
+  <span class="sync-status" id="sync">⚪ 接続中…</span>
+  <span class="spacer"></span>
+  <button class="ghost" id="btnNew">＋ 新規</button>
+  <button class="ghost" id="btnList">📋 一覧</button>
+  <button class="primary" id="btnSave">💾 保存</button>
+  <button id="btnPrint">🖨 印刷 / PDF</button>
+</header>
+
+<main>
+  <section class="form-pane" id="formPane"></section>
+  <section class="preview-pane">
+    <div class="a4-wrap"><div class="a4" id="a4"><div class="scaler" id="scaler"></div></div></div>
+  </section>
+</main>
+
+<div class="modal" id="listModal">
+  <div class="box">
+    <h2>保存済みの処方箋 <span class="x" id="listClose">×</span></h2>
+    <div class="tools"><input id="search" placeholder="お客様名・会員番号・点検者などで検索"></div>
+    <div class="reclist" id="reclist"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/blueprint.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
