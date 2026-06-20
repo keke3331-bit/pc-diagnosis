@@ -46,6 +46,10 @@ select{min-width:130px;max-width:230px}
 input.f{width:150px}
 input.f.wide{width:230px}
 .ctrls .sublabel{font-size:11px;color:#7a8699}
+input.f.invalid{border-color:#e23b3b;background:#fff5f5}
+select:disabled{background:#eef1f5;color:#5b6675;cursor:not-allowed}
+.dlp-diff{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#5b6675;white-space:nowrap;cursor:pointer}
+.dlp-diff input{width:15px;height:15px;cursor:pointer}
 .drivechip{font-size:10px;font-weight:700;color:#fff;border-radius:4px;padding:2px 5px;min-width:22px;text-align:center}
 .drivechip.c{background:#2f6fd0}
 .drivechip.d{background:#e08a2b}

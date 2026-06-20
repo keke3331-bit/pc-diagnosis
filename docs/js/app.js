@@ -16,7 +16,7 @@ function todayStr(){
   return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate();
 }
 // 既定値の上書き（Excel初期値から変更したいもの）
-const DEFAULT_OVERRIDES = { 'F34':'なし', 'C35':'M.2(NVMe)' };
+const DEFAULT_OVERRIDES = { 'F34':'なし', 'C35':'M.2(NVMe)', 'C8':'' };  // 青or白は初期未選択
 // Dドライブ区分の選択肢
 const DDRIVE_OPTIONS = ['なし','内蔵SSDorHDD','外付けSSD','外付けHDD','USBメモリー'];
 const DDRIVE_DETAIL_CELLS = ['F35','F36','F37','F38','F39','F40','F41','F42','F43'];
@@ -300,6 +300,8 @@ function renderForm(){
   }
   applyWinMac();
   applyDDrive(false);
+  applyMembership();
+  applyDlpSync();
 }
 
 // メモリー欄: DDR(行29)をクロック(行28)より前に表示するよう並べ替え（1回だけ）
@@ -307,6 +309,9 @@ function setupFormRows(){
   const rows=BP.FORM_ROWS;
   const i28=rows.findIndex(r=>r.row===28), i29=rows.findIndex(r=>r.row===29);
   if(i28>=0 && i29>=0 && i28<i29){ const t=rows[i28]; rows[i28]=rows[i29]; rows[i29]=t; }
+  // 青or白(行8)を会員番号(行3)の前＝基本情報の最上部へ移動
+  const i8=rows.findIndex(r=>r.row===8), i3=rows.findIndex(r=>r.row===3);
+  if(i8>=0 && i3>=0 && i8>i3){ const [r8]=rows.splice(i8,1); rows.splice(rows.findIndex(r=>r.row===3),0,r8); }
 }
 // メモリークロック(C28)のコントロールをDDR選択に応じて作り直す（選択⇔手動入力の切替）
 function rebuildClockControl(){
@@ -352,8 +357,37 @@ function makeRow(r){
     ctrls.appendChild(makeControl(e));
     if(drive==='C'){ const br=document.createElement('span'); br.className='cbreak'; br.style.flexBasis='100%'; br.style.height='0'; ctrls.appendChild(br); } // C:とD:を改行で分ける
   });
+  // DLP担当(行6): 「預かりと別の担当」チェック。標準は預かりと同じ内容を自動反映
+  if(r.row===6){
+    const lbl=document.createElement('label'); lbl.className='dlp-diff';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.id='dlp-diff-cb';
+    cb.checked=!!model['_dlpDiff'];
+    cb.addEventListener('change',()=>{ model['_dlpDiff']=cb.checked; dirty=true; applyDlpSync(); bindPreview(); });
+    lbl.appendChild(cb); lbl.appendChild(document.createTextNode('預かりと別の担当'));
+    ctrls.appendChild(lbl);
+  }
   row.appendChild(head); row.appendChild(ctrls);
   return row;
+}
+
+// 会員番号(C3)の表示制御: 青(会員No.)選択時のみ表示。それ以外は隠して値クリア
+function applyMembership(){
+  const isMember = (model['C8']==='会員No.');
+  const rowEl=document.querySelector('.frow[data-row="3"]');
+  if(rowEl) rowEl.style.display = isMember ? '' : 'none';
+  if(!isMember && model['C3']){ model['C3']=''; const el=document.querySelector('[data-cell="C3"]'); if(el){ el.value=''; el.classList.remove('invalid'); } }
+}
+// DLP担当(C6)を預かり(C5)と同期。_dlpDiff=falseなら常にC5に追従しC6は編集不可
+function applyDlpSync(){
+  const diff = !!model['_dlpDiff'];
+  const sel=document.querySelector('[data-cell="C6"]');
+  if(!diff){
+    model['C6']=model['C5']||'';
+    if(sel){ fillOptions(sel, optionsFor('C6')||[], model['C6']); sel.disabled=true; sel.title='預かりと同じ（別にする場合はチェック）'; }
+  } else {
+    if(sel){ sel.disabled=false; sel.title=''; }
+  }
+  const cb=document.getElementById('dlp-diff-cb'); if(cb) cb.checked=diff;
 }
 
 function makeControl(e){
@@ -367,9 +401,30 @@ function makeControl(e){
   }
   const inp=document.createElement('input'); inp.className='f'; inp.dataset.cell=cell;
   inp.value = (model[cell]==null?'':model[cell]);
-  if(cell[0]==='C'&&(''+cell).length<=4) {}
+  // お客様名(C4): カタカナのみ（ひらがなは自動でカタカナ化、その他は弾く）
+  if(cell==='C4'){
+    inp.placeholder='カタカナで入力';
+    let composing=false;
+    inp.addEventListener('compositionstart',()=>composing=true);
+    inp.addEventListener('compositionend',()=>{ composing=false; const v=toKatakana(inp.value); inp.value=v; setVal('C4',v); });
+    inp.addEventListener('input',()=>{ if(composing){ return; } const v=toKatakana(inp.value); if(v!==inp.value) inp.value=v; setVal('C4',v); });
+    return inp;
+  }
+  // 会員番号(C3): 数字8桁
+  if(cell==='C3'){
+    inp.placeholder='数字8桁'; inp.inputMode='numeric'; inp.maxLength=8;
+    inp.addEventListener('input',()=>{ const v=inp.value.replace(/[^0-9]/g,'').slice(0,8); if(v!==inp.value) inp.value=v;
+      inp.classList.toggle('invalid', v.length>0 && v.length<8); setVal('C3',v); });
+    return inp;
+  }
   inp.addEventListener('input', ()=>{ setVal(cell, inp.value); });
   return inp;
+}
+// ひらがな→カタカナ変換＋カタカナ以外（記号/漢字/英数）を除去（空白とー・は許可）
+function toKatakana(s){
+  if(!s) return '';
+  s=s.replace(/[ぁ-ゖ]/g, ch=>String.fromCharCode(ch.charCodeAt(0)+0x60));
+  return s.replace(/[^゠-ヿ　\s]/g,'');
 }
 function fillOptions(sel, opts, val){
   sel.innerHTML='';
@@ -439,6 +494,8 @@ function setVal(cell, val, light){
   if(cell==='C46'){ applyWinMac(); }
   if(cell==='F34'){ applyDDrive(true); }
   if(cell==='C29'){ rebuildClockControl(); }   // DDR変更でクロック欄を選択/手動に切替
+  if(cell==='C8'){ applyMembership(); }          // 青or白で会員番号の表示切替
+  if(cell==='C5'){ applyDlpSync(); }             // 預かり変更→DLP担当に同期(別担当でなければ)
   bindPreview();
   if(!light) refreshDynamicSelects();
   markSync('●未保存', '#caa23a');
@@ -510,6 +567,8 @@ function loadRecord(id){
   model = Object.assign({}, BP.INPUT_DEFAULTS_FLAT(), rec.model);
   // ensure all keys exist
   for(const ref in BP.INPUT_DEFAULTS){ if(model[ref]===undefined){ const v=BP.INPUT_DEFAULTS[ref]; model[ref]=(v&&typeof v==='object')?'':v; } }
+  // DLP担当の「別担当」状態を復元（保存値が無ければ預かりとの差異から判定）
+  if(model['_dlpDiff']===undefined) model['_dlpDiff']=!!(model['C6'] && model['C6']!==model['C5']);
   currentId=id; dirty=false;
   renderForm(); bindPreview(); closeList(); toast('読み込みました');
 }
