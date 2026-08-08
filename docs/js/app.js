@@ -254,13 +254,34 @@ function flowSoudan(){
   const eS=soudanSpans('E'), nS=soudanSpans('N');
   if(eS.some(s=>!s) || nS.some(s=>!s)) return;
   const ctx=flowSoudan._ctx || (flowSoudan._ctx=document.createElement('canvas').getContext('2d'));
-  function splitFit(text, sp){
+  // 枠幅は列ごとに一定なので一度測ってキャッシュ。
+  // スマホの入力タブ中はプレビューがdisplay:noneでclientWidth=0になるため、一時的に画面外表示して測る
+  function boxWidth(pre, sp){
+    const cache=flowSoudan._w || (flowSoudan._w={});
+    if(cache[pre]) return cache[pre];
+    const td=sp.closest('td');
+    let w=td.clientWidth;
+    if(!w){
+      const pane=document.querySelector('.preview-pane');
+      if(pane){
+        const prev=pane.getAttribute('style')||'';
+        pane.style.cssText=prev+';display:flex;position:absolute;visibility:hidden;left:-99999px;top:0';
+        w=td.clientWidth;
+        if(prev) pane.setAttribute('style', prev); else pane.removeAttribute('style');
+      }
+    }
+    if(w>0) cache[pre]=w;
+    return w;
+  }
+  function splitFit(text, sp, pre){
     if(!text) return [];
     const td=sp.closest('td');
     if('origfs' in td.dataset) td.style.fontSize=td.dataset.origfs;  // 縮小前の基準サイズで測る
+    const w=boxWidth(pre, sp);
+    if(!w) return [String(text)];   // 幅が測れないときは分割しない（1文字ずつ壊れるのを防ぐ）
     const cs=getComputedStyle(td);
     ctx.font=cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;
-    const maxW=Math.max(20, td.clientWidth-6);
+    const maxW=Math.max(20, w-6);
     const out=[]; let cur='';
     for(const ch of String(text)){
       if(cur && ctx.measureText(cur+ch).width>maxW){ out.push(cur); cur=ch; }
@@ -273,8 +294,8 @@ function flowSoudan(){
   const eOut=Array(10).fill(''), nOut=Array(10).fill('');
   let bi=0, spill=false;
   for(let k=0;k<10;k++){
-    const es=splitFit(eVals[k], eS[0]);
-    const ns=splitFit(nVals[k], nS[0]);
+    const es=splitFit(eVals[k], eS[0], 'E');
+    const ns=splitFit(nVals[k], nS[0], 'N');
     if(!es.length && !ns.length) continue;
     const need=Math.max(es.length, ns.length);
     for(let j=0;j<need;j++){
