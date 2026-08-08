@@ -586,6 +586,9 @@ function setVal(cell, val, light){
   if(cell==='C29'){ rebuildClockControl(); }   // DDR変更でクロック欄を選択/手動に切替
   if(cell==='C8'){ applyMembership(); }          // 青or白で会員番号の表示切替
   if(cell==='C5'){ applyDlpSync(); }             // 預かり変更→DLP担当に同期(別担当でなければ)
+  // 作成支援: 会員番号/氏名→前回引き継ぎ提案、型番→スペック自動入力提案（入力が落ち着いてから）
+  if(cell==='C3'||cell==='C4'){ clearTimeout(setVal._prevT); setVal._prevT=setTimeout(checkPrevRecord,500); }
+  if(cell==='C11'||cell==='C12'){ clearTimeout(setVal._modelT); setVal._modelT=setTimeout(checkModelDict,400); }
   bindPreview();
   if(!light) refreshDynamicSelects();
   markSync('●未保存', '#caa23a');
@@ -612,6 +615,98 @@ function cleanLabel(s){ if(!s)return ''; return String(s).replace(/^→/,'').rep
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
 function markSync(txt,col){ const s=$('#sync'); s.textContent=txt; if(col)s.style.color=col; }
 
+/* ===================== 作成支援（前回引き継ぎ・型番辞書） ===================== */
+// 機種・スペック系のセル（お客様の前回処方箋から引き継ぐ対象。点検日・測定値・相談内容・診断結果は含めない）
+const CARRY_CELLS=['C9','C10','C11','C12','C13','C14','C46',
+  'C19','C20','C21','C22','C26','C27','C28','C29','C31','D31',
+  'C35','C36','C37','F34','F35','F36','F37'];
+// 型番辞書に載せるセル（シリアルNo・Dドライブ等の個体差が大きいものは除外）
+const MODEL_SPEC_CELLS=['C9','C10','C14','C46','C19','C20','C21','C22',
+  'C26','C27','C28','C29','C31','D31','C35','C36','C37'];
+
+function cellDefault(c){
+  if(c in DEFAULT_OVERRIDES) return DEFAULT_OVERRIDES[c];
+  const v=BP.INPUT_DEFAULTS[c];
+  return (v&&typeof v==='object')?'':(v==null?'':v);
+}
+// 未入力（＝空 or 初期値のまま）のセルだけを埋める。既に手入力された値は上書きしない
+function isUntouched(c){ const v=model[c]; return v===undefined||v===''||String(v)===String(cellDefault(c)); }
+function fillableCells(spec, cells){
+  return cells.filter(c=>{ const sv=spec[c]; return sv!==undefined&&sv!==''&&isUntouched(c)&&String(sv)!==String(model[c]); });
+}
+function applyFill(spec, cells, msg){
+  const targets=fillableCells(spec, cells);
+  targets.forEach(c=>{ model[c]=spec[c]; });
+  if(targets.length){ dirty=true; renderForm(); bindPreview(); markSync('●未保存','#caa23a'); }
+  toast(msg.replace('{n}', targets.length));
+}
+
+/* 提案バー（画面下部に固定表示、×で却下） */
+let _dismissed={};
+function hideSuggest(){ const b=document.getElementById('suggestBar'); if(b)b.remove(); }
+function showSuggest(key, msgHtml, btnLabel, onAccept){
+  if(_dismissed[key]) return;
+  let bar=document.getElementById('suggestBar');
+  if(bar && bar.dataset.key===key) return;
+  if(!bar){ bar=document.createElement('div'); bar.id='suggestBar'; bar.className='suggest-bar'; document.body.appendChild(bar); }
+  bar.dataset.key=key;
+  bar.innerHTML='<span class="s-msg">'+msgHtml+'</span>';
+  const ok=document.createElement('button'); ok.className='s-ok'; ok.textContent=btnLabel;
+  ok.onclick=()=>{ _dismissed[key]=1; hideSuggest(); onAccept(); };
+  const x=document.createElement('button'); x.className='s-x'; x.textContent='×'; x.title='閉じる';
+  x.onclick=()=>{ _dismissed[key]=1; hideSuggest(); };
+  bar.appendChild(ok); bar.appendChild(x);
+}
+
+/* --- 1) 前回処方箋の引き継ぎ: 会員番号(8桁) or お客様名の一致で最新レコードを提案 --- */
+function checkPrevRecord(){
+  if(currentId) return;   // 既存レコードの編集中は出さない
+  const member=String(model['C3']||'').trim();
+  const name=String(model['C4']||'').trim();
+  if(member.length!==8 && !name) return;
+  const arr=Object.values(allRecords).filter(r=>
+    (member.length===8 && r.member===member) || (name && r.name===name));
+  if(!arr.length) return;
+  arr.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+  const rec=arr[0], m=rec.model||{};
+  if(!fillableCells(m, CARRY_CELLS).length) return;   // 引き継げる項目が無ければ出さない
+  showSuggest('prev_'+rec.id,
+    '👤 <b>'+esc(rec.name||'（無題）')+'</b> さんの前回処方箋（'+esc((rec.updatedAt||'').slice(0,10))+' 保存）があります',
+    '機種情報を引き継ぐ',
+    ()=>applyFill(m, CARRY_CELLS, '前回処方箋から {n} 項目を引き継ぎました'));
+}
+
+/* --- 3) 型番辞書: 保存済み処方箋から 型番→スペック の索引を自動生成（保存のたびに育つ） --- */
+let modelIndex={};
+function normModel(s){ return String(s||'').replace(/\s+/g,'').toUpperCase(); }
+function rebuildModelIndex(){
+  modelIndex={};
+  Object.values(allRecords).forEach(r=>{
+    const m=r.model||{};
+    const key=normModel(m['C12']||m['C11']);
+    if(!key || key.length<3) return;
+    const spec={}; let has=0;
+    MODEL_SPEC_CELLS.forEach(c=>{ const v=m[c]; if(v!==undefined&&v!==''){ spec[c]=v; has++; } });
+    if(has<3) return;   // スペックがほぼ空の記録は辞書に採用しない
+    const cur=modelIndex[key];
+    if(!cur){ modelIndex[key]={disp:(m['C12']||m['C11']||''), updatedAt:r.updatedAt||'', spec, count:1}; }
+    else{
+      cur.count++;
+      if((r.updatedAt||'')>cur.updatedAt){ cur.updatedAt=r.updatedAt||''; cur.spec=spec; cur.disp=m['C12']||m['C11']||cur.disp; }
+    }
+  });
+}
+function checkModelDict(){
+  const key=normModel(model['C12']||model['C11']);
+  if(!key || key.length<3) return;
+  const hit=modelIndex[key]; if(!hit) return;
+  if(fillableCells(hit.spec, MODEL_SPEC_CELLS).length<2) return;   // 既に埋まっているなら出さない
+  showSuggest('model_'+key,
+    '📚 型番「<b>'+esc(hit.disp)+'</b>」の過去データ（'+hit.count+'件）があります',
+    'スペックを自動入力',
+    ()=>applyFill(hit.spec, MODEL_SPEC_CELLS, '過去データから {n} 項目を自動入力しました（空欄のみ）'));
+}
+
 /* ===================== Firebase ===================== */
 let dbRef=null, allRecords={};
 function initFirebase(){
@@ -624,7 +719,7 @@ function initFirebase(){
       if(s.val()===true) markSync(dirty?'●未保存':'🟢 接続済','#7bdca0');
       else markSync('🔴 オフライン','#e88');
     });
-    dbRef.on('value', snap=>{ allRecords = snap.val()||{}; renderList(); tryOpenFromUrl(); });
+    dbRef.on('value', snap=>{ allRecords = snap.val()||{}; rebuildModelIndex(); renderList(); tryOpenFromUrl(); });
   }catch(e){ console.warn('Firebase init error', e); markSync('⚪ ローカルのみ','#ccc'); }
 }
 function recordTitle(m){
@@ -642,7 +737,7 @@ function save(){
   currentId=id; dirty=false;
   if(dbRef){ dbRef.child(id).set(rec).then(()=>{ toast('💾 保存しました'); markSync('🟢 保存済','#7bdca0'); })
     .catch(e=>{ toast('保存失敗: '+e.message); }); }
-  else { allRecords[id]=rec; localStorage.setItem('pc_rx_local', JSON.stringify(allRecords)); toast('💾 ローカル保存'); }
+  else { allRecords[id]=rec; localStorage.setItem('pc_rx_local', JSON.stringify(allRecords)); rebuildModelIndex(); toast('💾 ローカル保存'); }
 }
 // URLの ?id=<記録ID> で特定の処方箋を開く（FCからの紐づけリンク用）
 let _urlIdHandled=false;
@@ -660,6 +755,7 @@ function loadRecord(id){
   // DLP担当の「別担当」状態を復元（保存値が無ければ預かりとの差異から判定）
   if(model['_dlpDiff']===undefined) model['_dlpDiff']=!!(model['C6'] && model['C6']!==model['C5']);
   currentId=id; dirty=false;
+  hideSuggest();
   renderForm(); bindPreview(); closeList(); toast('読み込みました');
 }
 function duplicateRecord(id){ const rec=allRecords[id]; if(!rec)return; loadRecord(id); currentId=null; toast('複製しました（新規として保存できます）'); }
@@ -690,7 +786,7 @@ function closeList(){ $('#listModal').classList.remove('open'); }
 /* ===================== 起動 ===================== */
 BP.INPUT_DEFAULTS_FLAT=function(){ const o={}; for(const ref in BP.INPUT_DEFAULTS){ const v=BP.INPUT_DEFAULTS[ref]; o[ref]=(v&&typeof v==='object')?'':v; } for(const k in DEFAULT_OVERRIDES) o[k]=DEFAULT_OVERRIDES[k]; o['C2']=todayStr(); return o; };
 
-function newDoc(){ if(dirty && !confirm('保存していない変更があります。新規作成しますか？'))return; initModel(); renderForm(); bindPreview(); toast('新規作成'); }
+function newDoc(){ if(dirty && !confirm('保存していない変更があります。新規作成しますか？'))return; initModel(); _dismissed={}; hideSuggest(); renderForm(); bindPreview(); toast('新規作成'); }
 
 function boot(){
   setupFormRows();
@@ -709,7 +805,7 @@ function boot(){
   setupMobileTabs();
   window.addEventListener('resize', fitPreviewMobile);
   // local fallback load
-  if(typeof firebase==='undefined'){ try{ allRecords=JSON.parse(localStorage.getItem('pc_rx_local')||'{}'); }catch(e){} }
+  if(typeof firebase==='undefined'){ try{ allRecords=JSON.parse(localStorage.getItem('pc_rx_local')||'{}'); rebuildModelIndex(); }catch(e){} }
   window.addEventListener('beforeunload', e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
 }
 

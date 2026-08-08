@@ -99,6 +99,18 @@ select:disabled{background:#eef1f5;color:#5b6675;cursor:not-allowed}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#15233b;color:#fff;padding:11px 20px;border-radius:24px;font-size:13px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
 
+/* 作成支援の提案バー（前回引き継ぎ・型番スペック自動入力） */
+.suggest-bar{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:150;
+  display:flex;align-items:center;gap:10px;max-width:min(92vw,640px);
+  background:#27395c;color:#fff;border:1px solid #5b9bd5;border-radius:12px;
+  padding:10px 12px 10px 16px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.suggest-bar .s-msg{line-height:1.4}
+.suggest-bar .s-msg b{color:#9fd0ff}
+.suggest-bar .s-ok{border:0;border-radius:8px;background:#5b9bd5;color:#fff;font-weight:700;
+  font-size:13px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+.suggest-bar .s-ok:hover{background:#6faae0}
+.suggest-bar .s-x{border:0;background:transparent;color:#9fb0cf;font-size:16px;cursor:pointer;padding:4px 6px}
+
 /* ===== スマホ（〜900px）：入力 / 処方箋プレビュー をタブで切替（横並びによる崩れ防止） ===== */
 @media (max-width:900px){
   .topbar{flex-wrap:wrap;gap:6px;padding:8px 10px}
@@ -134,7 +146,7 @@ select:disabled{background:#eef1f5;color:#5b6675;cursor:not-allowed}
 @media print{
   @page{size:A4 portrait;margin:0}
   html,body{margin:0 !important;padding:0 !important;width:auto !important;height:auto !important;overflow:hidden !important;background:#fff}
-  .topbar,.form-pane,.modal,.toast,.mtabs{display:none !important}
+  .topbar,.form-pane,.modal,.toast,.mtabs,.suggest-bar{display:none !important}
   main{display:block !important;width:auto !important;margin:0 !important;padding:0 !important}
   .preview-pane{position:static !important;height:auto !important;overflow:hidden !important;padding:0 !important;margin:0 !important;background:#fff;display:block !important;width:auto !important}
   .a4-wrap{box-shadow:none !important;margin:0 auto !important;width:707px !important;zoom:1 !important;transform:none !important}
