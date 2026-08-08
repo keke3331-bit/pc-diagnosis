@@ -113,7 +113,6 @@ function buildPreview(){
     if(tw>0) natW=tw; if(th>0) natH=th;
   }
   drawColorUnderlays(tbl);   // 色付き領域の継ぎ目(方眼)を消す同色ベタ下地
-  enableSoudanWrap();        // 相談内容セルは折り返し可（縮小せず下の枠へ改行）
   // .a4枠を小さめ(707x1000=約187x264mm)にし、Safariのヘッダ/フッタ余白が入っても1ページに収める
   const BOX_W=707, BOX_H=1000;        // .a4ボックス
   const PAGE_W=707, PAGE_H=976;       // コンテンツを収める領域（上下左右に内側余白）
@@ -164,6 +163,7 @@ function bindPreview(){
   scalerEl.querySelectorAll('[data-f]').forEach(sp=>{
     sp.textContent = fmt(H[sp.getAttribute('data-f')]);
   });
+  flowSoudan();
   autofitCells();
   drawBars(L);
 }
@@ -229,29 +229,66 @@ function drawBars(L){
   a4El.appendChild(vl);
 }
 
-/* 相談内容(お困りごとE14-32/詳細N14-32)のセルは折り返しを許可。
-   セルは2行分(rowspan=2)の高さがあるため、長文はまず下の枠へ改行して収め、
-   それでも収まらないときだけ autofitCells がフォントを縮小する。
-   ※行高が文章につられて伸びてレイアウトが崩れないよう、内側spanを固定高にする */
-const SOUDAN_CELL_RE = /^[EN](14|16|18|20|22|24|26|28|30|32)$/;
-function enableSoudanWrap(){
-  scalerEl.querySelectorAll('span[data-f]').forEach(sp=>{
-    if(!SOUDAN_CELL_RE.test(sp.getAttribute('data-f'))) return;
-    const td=sp.closest('td'); if(!td) return;
-    td.style.whiteSpace='normal';
-    td.style.wordBreak='break-all';
-    td.style.lineHeight='1.12';
-    // rowspan分の割当高を計算し、内側spanをその高さで固定（超過分はhiddenにして縮小判定に使う）
-    const tr=td.parentElement;
-    const rs=parseInt(td.getAttribute('rowspan')||'1',10);
+/* 相談内容(お困りごとE列/詳細N列)の流し込み:
+   長文は枠内で改行せず、あふれた続きを下の番号枠へ流し込む（紙の処方箋の書き方に合わせる）。
+   同じ項目のお困りごとと詳細が横に並ぶよう、左右で消費する枠数を揃える。
+   全10枠を使い切ったときだけ、最終枠内で折り返し＋autofitCellsの縮小で収める */
+const SOUDAN_ROWS=[14,16,18,20,22,24,26,28,30,32];
+function soudanSpans(pre){ return SOUDAN_ROWS.map(r=>scalerEl.querySelector('span[data-f="'+pre+r+'"]')); }
+function applyBoxWrap(sp, on){
+  const td=sp.closest('td'); if(!td) return;
+  if(on){
+    td.style.whiteSpace='normal'; td.style.wordBreak='break-all'; td.style.lineHeight='1.12';
+    // 行高が文章につられて伸びないよう、内側spanをrowspan分の割当高で固定
+    const tr=td.parentElement, rs=parseInt(td.getAttribute('rowspan')||'1',10);
     let h=parseFloat(tr.style.height)||0, nx=tr.nextElementSibling;
     for(let i=1;i<rs && nx;i++){ h+=parseFloat(nx.style.height)||0; nx=nx.nextElementSibling; }
     sp.classList.add('wrapfit');
-    sp.style.display='flex';
-    sp.style.alignItems='center';
-    sp.style.height=Math.max(0,h-3)+'px';
-    sp.style.overflow='hidden';
-  });
+    sp.style.cssText='display:flex;align-items:center;overflow:hidden;height:'+Math.max(0,h-3)+'px';
+  } else {
+    td.style.whiteSpace='nowrap'; td.style.wordBreak=''; td.style.lineHeight='';
+    sp.classList.remove('wrapfit'); sp.style.cssText='';
+  }
+}
+function flowSoudan(){
+  const eS=soudanSpans('E'), nS=soudanSpans('N');
+  if(eS.some(s=>!s) || nS.some(s=>!s)) return;
+  const ctx=flowSoudan._ctx || (flowSoudan._ctx=document.createElement('canvas').getContext('2d'));
+  function splitFit(text, sp){
+    if(!text) return [];
+    const td=sp.closest('td');
+    if('origfs' in td.dataset) td.style.fontSize=td.dataset.origfs;  // 縮小前の基準サイズで測る
+    const cs=getComputedStyle(td);
+    ctx.font=cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;
+    const maxW=Math.max(20, td.clientWidth-6);
+    const out=[]; let cur='';
+    for(const ch of String(text)){
+      if(cur && ctx.measureText(cur+ch).width>maxW){ out.push(cur); cur=ch; }
+      else cur+=ch;
+    }
+    if(cur) out.push(cur);
+    return out;
+  }
+  const eVals=eS.map(s=>s.textContent), nVals=nS.map(s=>s.textContent);
+  const eOut=Array(10).fill(''), nOut=Array(10).fill('');
+  let bi=0, spill=false;
+  for(let k=0;k<10;k++){
+    const es=splitFit(eVals[k], eS[0]);
+    const ns=splitFit(nVals[k], nS[0]);
+    if(!es.length && !ns.length) continue;
+    const need=Math.max(es.length, ns.length);
+    for(let j=0;j<need;j++){
+      const t=bi+j;
+      if(t<10){ if(es[j]) eOut[t]=es[j]; if(ns[j]) nOut[t]=ns[j]; }
+      else { spill=true; if(es[j]) eOut[9]+=es[j]; if(ns[j]) nOut[9]+=ns[j]; }
+    }
+    bi=Math.min(10, bi+need);
+  }
+  for(let i=0;i<10;i++){
+    eS[i].textContent=eOut[i]; nS[i].textContent=nOut[i];
+    applyBoxWrap(eS[i], spill && i===9);
+    applyBoxWrap(nS[i], spill && i===9);
+  }
 }
 
 /* 文字がセル幅/高さを超える箇所のフォントを自動縮小（見切れ防止） */
