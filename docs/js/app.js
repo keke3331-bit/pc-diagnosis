@@ -113,6 +113,7 @@ function buildPreview(){
     if(tw>0) natW=tw; if(th>0) natH=th;
   }
   drawColorUnderlays(tbl);   // 色付き領域の継ぎ目(方眼)を消す同色ベタ下地
+  enableSoudanWrap();        // 相談内容セルは折り返し可（縮小せず下の枠へ改行）
   // .a4枠を小さめ(707x1000=約187x264mm)にし、Safariのヘッダ/フッタ余白が入っても1ページに収める
   const BOX_W=707, BOX_H=1000;        // .a4ボックス
   const PAGE_W=707, PAGE_H=976;       // コンテンツを収める領域（上下左右に内側余白）
@@ -228,6 +229,31 @@ function drawBars(L){
   a4El.appendChild(vl);
 }
 
+/* 相談内容(お困りごとE14-32/詳細N14-32)のセルは折り返しを許可。
+   セルは2行分(rowspan=2)の高さがあるため、長文はまず下の枠へ改行して収め、
+   それでも収まらないときだけ autofitCells がフォントを縮小する。
+   ※行高が文章につられて伸びてレイアウトが崩れないよう、内側spanを固定高にする */
+const SOUDAN_CELL_RE = /^[EN](14|16|18|20|22|24|26|28|30|32)$/;
+function enableSoudanWrap(){
+  scalerEl.querySelectorAll('span[data-f]').forEach(sp=>{
+    if(!SOUDAN_CELL_RE.test(sp.getAttribute('data-f'))) return;
+    const td=sp.closest('td'); if(!td) return;
+    td.style.whiteSpace='normal';
+    td.style.wordBreak='break-all';
+    td.style.lineHeight='1.12';
+    // rowspan分の割当高を計算し、内側spanをその高さで固定（超過分はhiddenにして縮小判定に使う）
+    const tr=td.parentElement;
+    const rs=parseInt(td.getAttribute('rowspan')||'1',10);
+    let h=parseFloat(tr.style.height)||0, nx=tr.nextElementSibling;
+    for(let i=1;i<rs && nx;i++){ h+=parseFloat(nx.style.height)||0; nx=nx.nextElementSibling; }
+    sp.classList.add('wrapfit');
+    sp.style.display='flex';
+    sp.style.alignItems='center';
+    sp.style.height=Math.max(0,h-3)+'px';
+    sp.style.overflow='hidden';
+  });
+}
+
 /* 文字がセル幅/高さを超える箇所のフォントを自動縮小（見切れ防止） */
 function autofitCells(){
   const tds=scalerEl.querySelectorAll('td');
@@ -237,8 +263,13 @@ function autofitCells(){
   });
   tds.forEach(td=>{
     const t=td.textContent; if(!t || !t.trim()) return;
+    // 折り返しセル(wrapfit)は固定高の内側spanからはみ出したときだけ縮小
+    const wrap=td.querySelector('span.wrapfit');
+    const over = wrap
+      ? ()=>(wrap.scrollHeight>wrap.clientHeight+1 || wrap.scrollWidth>wrap.clientWidth+1)
+      : ()=>(td.scrollWidth>td.clientWidth+1 || td.scrollHeight>td.clientHeight+2);
     let guard=0;
-    while((td.scrollWidth>td.clientWidth+1 || td.scrollHeight>td.clientHeight+2) && guard<16){
+    while(over() && guard<40){
       const fs=parseFloat(getComputedStyle(td).fontSize);
       if(fs<=6) break;
       td.style.fontSize=(fs-0.5)+'px'; guard++;
@@ -457,7 +488,7 @@ function optionsFor(cell){
 /* 相談内容ブロック(105-144): 10行 × [相談入力→お困り選択 / 詳細入力→詳細選択] */
 function renderSoudan(pane){
   const sec=document.createElement('div'); sec.className='sec';
-  sec.innerHTML='<div class="sec-h">処方箋（お困りごと・相談内容）<span class="mini">入力欄に直接記入 → 右の選択で反映（プリセットも選択可）</span></div>';
+  sec.innerHTML='<div class="sec-h">処方箋（お困りごと・相談内容）<span class="mini">自由入力はそのまま自動反映（右のプリセット選択でも反映可）</span></div>';
   const body=document.createElement('div'); sec.appendChild(body); pane.appendChild(sec);
   for(let k=0;k<10;k++){
     const row=document.createElement('div'); row.className='frow'; row.style.gridTemplateColumns='30px 1fr';
@@ -477,7 +508,8 @@ function relLine(name, inputCell, selectCell){
   const sel=document.createElement('select'); sel.dataset.cell=selectCell; sel.style.maxWidth='260px';
   const refresh=()=>fillOptions(sel, optionsFor(selectCell)||[], model[selectCell]);
   refresh();
-  inp.addEventListener('input', ()=>{ setVal(inputCell, inp.value, true); refresh(); });
+  // 自由入力はそのまま反映セルにも書き込み、プレビューへ即時反映（プリセット選択で上書き可）
+  inp.addEventListener('input', ()=>{ model[inputCell]=inp.value; setVal(selectCell, inp.value, true); refresh(); });
   sel.addEventListener('change', ()=>{ setVal(selectCell, sel.value); });
   wrap.appendChild(tag); wrap.appendChild(inp);
   const arrow=document.createElement('span'); arrow.className='sublabel'; arrow.textContent='→反映:'; wrap.appendChild(arrow);
